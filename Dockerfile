@@ -25,11 +25,7 @@ RUN apk add --no-cache ca-certificates tzdata curl
 # Copy binary
 COPY --from=builder /src/build/picoclaw /usr/local/bin/picoclaw
 
-# Create non-root user and data directory
-RUN addgroup -g 1000 picoclaw && \
-    adduser -D -u 1000 -G picoclaw picoclaw && \
-    mkdir -p /data/.picoclaw && \
-    chown -R picoclaw:picoclaw /data
+RUN mkdir -p /data/.picoclaw
 
 # Default environment for Railway/cloud deployment
 ENV HOME=/data \
@@ -40,11 +36,9 @@ ENV HOME=/data \
 
 EXPOSE 8080
 
-# Switch to non-root user
-USER picoclaw
-
 # Copy startup script
-COPY --chown=picoclaw:picoclaw start.sh /usr/local/bin/start.sh
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
 
 # Health check (works for both gateway and dashboard modes)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
