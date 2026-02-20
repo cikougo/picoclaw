@@ -43,12 +43,11 @@ EXPOSE 8080
 # Switch to non-root user
 USER picoclaw
 
-# Run onboard to create initial directories and config
-RUN /usr/local/bin/picoclaw onboard
+# Copy startup script
+COPY --chown=picoclaw:picoclaw start.sh /usr/local/bin/start.sh
 
 # Health check (works for both gateway and dashboard modes)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -q --spider http://localhost:${PORT:-18790}/health || exit 1
 
-ENTRYPOINT ["picoclaw"]
-CMD ["dashboard"]
+CMD ["/usr/local/bin/start.sh"]
