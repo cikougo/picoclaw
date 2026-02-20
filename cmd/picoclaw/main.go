@@ -107,6 +107,8 @@ func main() {
 		agentCmd()
 	case "gateway":
 		gatewayCmd()
+	case "dashboard":
+		dashboardCmd()
 	case "status":
 		statusCmd()
 	case "migrate":
@@ -182,6 +184,7 @@ func printHelp() {
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start picoclaw gateway")
+	fmt.Println("  dashboard   Start web dashboard (for Railway/cloud deployment)")
 	fmt.Println("  status      Show picoclaw status")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to PicoClaw")
