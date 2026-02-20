@@ -41,13 +41,122 @@
     </header>
 
     <div class="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-800">
-      <button @click="tab = 'config'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
-              :class="tab === 'config' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Configuration</button>
       <button @click="tab = 'status'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
               :class="tab === 'status' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Status</button>
+      <button @click="tab = 'models'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
+              :class="tab === 'models' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Models</button>
+      <button @click="tab = 'channels'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
+              :class="tab === 'channels' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Channels</button>
     </div>
 
-    <div x-show="tab === 'config'">
+    <!-- STATUS TAB (default) -->
+    <div x-show="tab === 'status'">
+      <div class="space-y-6">
+
+        <section>
+          <h2 class="text-lg font-semibold mb-3">Gateway</h2>
+          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-4">
+                <div>
+                  <span class="text-xs text-gray-500">State</span>
+                  <p class="font-medium" :class="{
+                    'text-emerald-600 dark:text-emerald-400': status.gateway?.state === 'running',
+                    'text-red-600 dark:text-red-400': status.gateway?.state === 'error',
+                    'text-yellow-600 dark:text-yellow-400': status.gateway?.state === 'starting' || status.gateway?.state === 'stopping',
+                    'text-gray-500 dark:text-gray-400': status.gateway?.state === 'stopped'
+                  }" x-text="status.gateway?.state || 'unknown'"></p>
+                </div>
+                <div x-show="status.gateway?.pid">
+                  <span class="text-xs text-gray-500">PID</span>
+                  <p class="font-medium" x-text="status.gateway?.pid"></p>
+                </div>
+                <div x-show="status.gateway?.uptime != null">
+                  <span class="text-xs text-gray-500">Uptime</span>
+                  <p class="font-medium" x-text="formatUptime(status.gateway?.uptime)"></p>
+                </div>
+                <div>
+                  <span class="text-xs text-gray-500">Restarts</span>
+                  <p class="font-medium" x-text="status.gateway?.restart_count ?? 0"></p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button @click="startGateway()" class="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-600/20 dark:text-emerald-400 dark:hover:bg-emerald-600/30 rounded-lg transition"
+                        :disabled="status.gateway?.state === 'running'">Start</button>
+                <button @click="stopGateway()" class="text-xs px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-600/20 dark:text-red-400 dark:hover:bg-red-600/30 rounded-lg transition"
+                        :disabled="status.gateway?.state === 'stopped'">Stop</button>
+                <button @click="restartGateway()" class="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-600/20 dark:text-blue-400 dark:hover:bg-blue-600/30 rounded-lg transition">Restart</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Agent Defaults</h2>
+            <button @click="saveConfig()" :disabled="saving"
+                    class="text-sm px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 rounded-lg transition">
+              <span x-show="!saving">Save</span>
+              <span x-show="saving">Saving...</span>
+            </button>
+          </div>
+          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Model</label>
+                <select class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        x-model="config.agents.defaults.model">
+                  <option value="" disabled>Select a model</option>
+                  <template x-for="m in config.model_list" :key="m.model_name">
+                    <option :value="m.model_name" x-text="m.model_name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Max Tokens</label>
+                <input type="number" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                       x-model.number="config.agents.defaults.max_tokens">
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Temperature</label>
+                <input type="number" step="0.1" min="0" max="2" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                       x-model.number="config.agents.defaults.temperature">
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Max Tool Iterations</label>
+                <input type="number" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                       x-model.number="config.agents.defaults.max_tool_iterations">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section x-show="(status.cron?.count || 0) > 0">
+          <h2 class="text-lg font-semibold mb-3">Cron Jobs <span class="text-sm text-gray-500" x-text="'(' + (status.cron?.count || 0) + ')'"></span></h2>
+          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
+            <template x-for="(job, i) in (status.cron?.jobs || [])" :key="i">
+              <div class="text-sm py-1 text-gray-500 dark:text-gray-400" x-text="JSON.stringify(job)"></div>
+            </template>
+          </div>
+        </section>
+
+        <section>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Recent Logs</h2>
+            <span class="text-xs text-gray-500" x-text="logs.length + ' lines'"></span>
+          </div>
+          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4 log-viewer h-96 overflow-y-auto" x-ref="logViewer">
+            <template x-for="(line, i) in logs" :key="i">
+              <div class="text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all" x-text="line"></div>
+            </template>
+            <div x-show="logs.length === 0" class="text-gray-400 dark:text-gray-600 text-sm">No logs yet</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- MODELS TAB -->
+    <div x-show="tab === 'models'">
       <div class="space-y-6">
 
         <section>
@@ -95,32 +204,39 @@
         </section>
 
         <section>
-          <h2 class="text-lg font-semibold mb-3">Agent Defaults</h2>
+          <h2 class="text-lg font-semibold mb-3">Tools</h2>
           <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Model</label>
-                <input type="text" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                       x-model="config.agents.defaults.model">
+                <label class="block text-xs text-gray-500 mb-1">Brave Search API Key</label>
+                <input type="password" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                       x-model="config.tools.web.brave.api_key" placeholder="Enter Brave Search API key">
               </div>
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">Max Tokens</label>
-                <input type="number" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                       x-model.number="config.agents.defaults.max_tokens">
-              </div>
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">Temperature</label>
-                <input type="number" step="0.1" min="0" max="2" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                       x-model.number="config.agents.defaults.temperature">
-              </div>
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">Max Tool Iterations</label>
-                <input type="number" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                       x-model.number="config.agents.defaults.max_tool_iterations">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="rounded bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600" x-model="config.tools.web.duckduckgo.enabled">
+                <label class="text-sm text-gray-500 dark:text-gray-400">DuckDuckGo Search</label>
               </div>
             </div>
           </div>
         </section>
+
+        <div class="flex items-center justify-between bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" class="rounded bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600" x-model="restartAfterSave">
+            <span class="text-sm text-gray-500 dark:text-gray-400">Restart gateway after save</span>
+          </label>
+          <button @click="saveConfig()" :disabled="saving"
+                  class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 rounded-lg text-sm font-medium transition">
+            <span x-show="!saving">Save Configuration</span>
+            <span x-show="saving">Saving...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANNELS TAB -->
+    <div x-show="tab === 'channels'">
+      <div class="space-y-6">
 
         <section>
           <h2 class="text-lg font-semibold mb-3">Channels</h2>
@@ -302,23 +418,6 @@
           </div>
         </section>
 
-        <section>
-          <h2 class="text-lg font-semibold mb-3">Tools</h2>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">Brave Search API Key</label>
-                <input type="password" class="w-full bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                       x-model="config.tools.web.brave.api_key" placeholder="Enter Brave Search API key">
-              </div>
-              <div class="flex items-center gap-2">
-                <input type="checkbox" class="rounded bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600" x-model="config.tools.web.duckduckgo.enabled">
-                <label class="text-sm text-gray-500 dark:text-gray-400">DuckDuckGo Search</label>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <div class="flex items-center justify-between bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
           <label class="flex items-center gap-2">
             <input type="checkbox" class="rounded bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600" x-model="restartAfterSave">
@@ -333,128 +432,6 @@
       </div>
     </div>
 
-    <div x-show="tab === 'status'">
-      <div class="space-y-6">
-
-        <section>
-          <h2 class="text-lg font-semibold mb-3">Gateway</h2>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
-            <div class="flex items-center justify-between mb-4">
-              <div class="flex items-center gap-4">
-                <div>
-                  <span class="text-xs text-gray-500">State</span>
-                  <p class="font-medium" :class="{
-                    'text-emerald-600 dark:text-emerald-400': status.gateway?.state === 'running',
-                    'text-red-600 dark:text-red-400': status.gateway?.state === 'error',
-                    'text-yellow-600 dark:text-yellow-400': status.gateway?.state === 'starting' || status.gateway?.state === 'stopping',
-                    'text-gray-500 dark:text-gray-400': status.gateway?.state === 'stopped'
-                  }" x-text="status.gateway?.state || 'unknown'"></p>
-                </div>
-                <div x-show="status.gateway?.pid">
-                  <span class="text-xs text-gray-500">PID</span>
-                  <p class="font-medium" x-text="status.gateway?.pid"></p>
-                </div>
-                <div x-show="status.gateway?.uptime != null">
-                  <span class="text-xs text-gray-500">Uptime</span>
-                  <p class="font-medium" x-text="formatUptime(status.gateway?.uptime)"></p>
-                </div>
-                <div>
-                  <span class="text-xs text-gray-500">Restarts</span>
-                  <p class="font-medium" x-text="status.gateway?.restart_count ?? 0"></p>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <button @click="startGateway()" class="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-600/20 dark:text-emerald-400 dark:hover:bg-emerald-600/30 rounded-lg transition"
-                        :disabled="status.gateway?.state === 'running'">Start</button>
-                <button @click="stopGateway()" class="text-xs px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-600/20 dark:text-red-400 dark:hover:bg-red-600/30 rounded-lg transition"
-                        :disabled="status.gateway?.state === 'stopped'">Stop</button>
-                <button @click="restartGateway()" class="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-600/20 dark:text-blue-400 dark:hover:bg-blue-600/30 rounded-lg transition">Restart</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2 class="text-lg font-semibold mb-3">Models</h2>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden">
-            <table class="w-full text-sm">
-              <thead class="bg-gray-100/50 dark:bg-gray-800/50">
-                <tr>
-                  <th class="text-left px-4 py-2 text-xs text-gray-500 font-medium">Name</th>
-                  <th class="text-left px-4 py-2 text-xs text-gray-500 font-medium">Model</th>
-                  <th class="text-left px-4 py-2 text-xs text-gray-500 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template x-for="(m, i) in (status.models || [])" :key="i">
-                  <tr class="border-t border-gray-200 dark:border-gray-800">
-                    <td class="px-4 py-2 font-medium" x-text="m.model_name"></td>
-                    <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="m.model"></td>
-                    <td class="px-4 py-2">
-                      <span class="text-xs px-2 py-0.5 rounded-full"
-                            :class="m.configured ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-500'"
-                            x-text="m.configured ? 'Configured' : 'No API key'"></span>
-                    </td>
-                  </tr>
-                </template>
-                <tr x-show="(status.models || []).length === 0">
-                  <td colspan="3" class="px-4 py-3 text-gray-400 dark:text-gray-600 text-center">No models configured</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section>
-          <h2 class="text-lg font-semibold mb-3">Channels</h2>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden">
-            <table class="w-full text-sm">
-              <thead class="bg-gray-100/50 dark:bg-gray-800/50">
-                <tr>
-                  <th class="text-left px-4 py-2 text-xs text-gray-500 font-medium">Channel</th>
-                  <th class="text-left px-4 py-2 text-xs text-gray-500 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template x-for="(info, name) in (status.channels || {})" :key="name">
-                  <tr class="border-t border-gray-200 dark:border-gray-800">
-                    <td class="px-4 py-2 capitalize" x-text="name"></td>
-                    <td class="px-4 py-2">
-                      <span class="text-xs px-2 py-0.5 rounded-full"
-                            :class="info.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-500'"
-                            x-text="info.enabled ? 'Enabled' : 'Disabled'"></span>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section x-show="(status.cron?.count || 0) > 0">
-          <h2 class="text-lg font-semibold mb-3">Cron Jobs <span class="text-sm text-gray-500" x-text="'(' + (status.cron?.count || 0) + ')'"></span></h2>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4">
-            <template x-for="(job, i) in (status.cron?.jobs || [])" :key="i">
-              <div class="text-sm py-1 text-gray-500 dark:text-gray-400" x-text="JSON.stringify(job)"></div>
-            </template>
-          </div>
-        </section>
-
-        <section>
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-lg font-semibold">Recent Logs</h2>
-            <span class="text-xs text-gray-500" x-text="logs.length + ' lines'"></span>
-          </div>
-          <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-4 log-viewer h-96 overflow-y-auto" x-ref="logViewer">
-            <template x-for="(line, i) in logs" :key="i">
-              <div class="text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all" x-text="line"></div>
-            </template>
-            <div x-show="logs.length === 0" class="text-gray-400 dark:text-gray-600 text-sm">No logs yet</div>
-          </div>
-        </section>
-      </div>
-    </div>
-
     <div x-show="toast.show" x-transition
          class="fixed bottom-6 right-6 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg"
          :class="toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'">
@@ -465,7 +442,7 @@
   <script>
     function app() {
       return {
-        tab: 'config',
+        tab: 'status',
         config: defaultConfig(),
         status: {},
         logs: [],
@@ -474,7 +451,7 @@
         toast: { show: false, message: '', type: 'success' },
 
         addModel() {
-          this.config.model_list.push({ model_name: '', model: '', api_key: '', api_base: '' });
+          this.config.model_list.unshift({ model_name: '', model: '', api_key: '', api_base: '' });
         },
         removeModel(idx) {
           this.config.model_list.splice(idx, 1);
