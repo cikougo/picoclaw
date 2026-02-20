@@ -47,6 +47,8 @@
               :class="tab === 'models' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Models</button>
       <button @click="tab = 'channels'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
               :class="tab === 'channels' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Channels</button>
+      <button @click="tab = 'workspace'" class="px-4 py-2 text-sm font-medium rounded-t-lg transition"
+              :class="tab === 'workspace' ? 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">Workspace</button>
     </div>
 
     <!-- STATUS TAB (default) -->
@@ -432,6 +434,49 @@
       </div>
     </div>
 
+    <!-- WORKSPACE TAB -->
+    <div x-show="tab === 'workspace'" x-init="$watch('tab', val => { if (val === 'workspace' && !workspaceLoaded) loadWorkspaceFiles() })">
+      <div class="space-y-6">
+
+        <section>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Workspace Files</h2>
+            <span class="text-xs text-gray-500" x-text="workspaceFiles.length + ' files'"></span>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            These markdown files define your agent's personality, knowledge, and memory. Changes take effect on the next agent interaction.
+          </p>
+        </section>
+
+        <template x-for="(file, idx) in workspaceFiles" :key="file.name">
+          <section>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-medium text-sm" x-text="file.name"></h3>
+              <div class="flex items-center gap-2">
+                <span x-show="file.saving" class="text-xs text-blue-500">Saving...</span>
+                <span x-show="file.saved" x-transition class="text-xs text-emerald-500">Saved</span>
+                <button @click="saveWorkspaceFile(idx)" :disabled="file.saving"
+                        class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 rounded-lg transition">
+                  Save
+                </button>
+              </div>
+            </div>
+            <div class="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl overflow-hidden">
+              <textarea x-model="file.content"
+                        class="w-full bg-transparent px-4 py-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+                        :rows="Math.max(8, (file.content || '').split('\n').length + 2)"
+                        spellcheck="false"
+                        placeholder="(empty - content will be created when you save)"></textarea>
+            </div>
+          </section>
+        </template>
+
+        <div x-show="workspaceFiles.length === 0" class="text-sm text-gray-400 dark:text-gray-600 bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-800 rounded-xl p-6 text-center">
+          Loading workspace files...
+        </div>
+      </div>
+    </div>
+
     <div x-show="toast.show" x-transition
          class="fixed bottom-6 right-6 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg"
          :class="toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'">
@@ -449,6 +494,8 @@
         saving: false,
         restartAfterSave: true,
         toast: { show: false, message: '', type: 'success' },
+        workspaceFiles: [],
+        workspaceLoaded: false,
 
         addModel() {
           this.config.model_list.unshift({ model_name: '', model: '', api_key: '', api_base: '' });
@@ -559,6 +606,43 @@
           type = type || 'success';
           this.toast = { show: true, message: message, type: type };
           setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+
+        async loadWorkspaceFiles() {
+          try {
+            const res = await fetch('/api/workspace/files');
+            if (res.ok) {
+              const data = await res.json();
+              this.workspaceFiles = (data.files || []).map(f => ({ ...f, saving: false, saved: false }));
+              this.workspaceLoaded = true;
+            }
+          } catch (e) {
+            this.showToast('Failed to load workspace files: ' + e.message, 'error');
+          }
+        },
+
+        async saveWorkspaceFile(idx) {
+          const file = this.workspaceFiles[idx];
+          file.saving = true;
+          file.saved = false;
+          try {
+            const res = await fetch('/api/workspace/file?name=' + encodeURIComponent(file.name), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: file.content }),
+            });
+            if (res.ok) {
+              file.saved = true;
+              setTimeout(() => { file.saved = false; }, 2000);
+              this.showToast(file.name + ' saved', 'success');
+            } else {
+              const err = await res.json().catch(() => ({ error: 'Save failed' }));
+              this.showToast(err.error || 'Save failed', 'error');
+            }
+          } catch (e) {
+            this.showToast('Save failed: ' + e.message, 'error');
+          }
+          file.saving = false;
         }
       };
     }

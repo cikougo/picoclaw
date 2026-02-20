@@ -2,14 +2,26 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/config"
 )
+
+// allowedWorkspaceFiles maps API-facing filenames to their relative paths
+// within the workspace directory. Only these files can be read/written via the API.
+var allowedWorkspaceFiles = map[string]string{
+	"AGENT.md":    "AGENT.md",
+	"IDENTITY.md": "IDENTITY.md",
+	"SOUL.md":     "SOUL.md",
+	"USER.md":     "USER.md",
+	"MEMORY.md":   "memory/MEMORY.md",
+}
 
 // secretFields are JSON keys whose values should be masked in API responses.
 var secretFields = map[string]bool{
@@ -248,6 +260,107 @@ func mergeSecrets(incoming, existing map[string]any) {
 				}
 			}
 		}
+	}
+}
+
+func (s *Server) getWorkspacePath() (string, error) {
+	cfg, err := config.LoadConfig(s.configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load config: %w", err)
+	}
+	ws := cfg.WorkspacePath()
+	if ws == "" {
+		return "", fmt.Errorf("workspace path not configured")
+	}
+	return ws, nil
+}
+
+func (s *Server) handleWorkspaceFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ws, err := s.getWorkspacePath()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	type fileEntry struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+
+	files := make([]fileEntry, 0, len(allowedWorkspaceFiles))
+	for name, relPath := range allowedWorkspaceFiles {
+		fullPath := filepath.Join(ws, relPath)
+		content := ""
+		if data, err := os.ReadFile(fullPath); err == nil {
+			content = string(data)
+		}
+		files = append(files, fileEntry{Name: name, Content: content})
+	}
+
+	// Sort for consistent ordering
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{"files": files})
+}
+
+func (s *Server) handleWorkspaceFile(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	relPath, ok := allowedWorkspaceFiles[name]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown file: " + name})
+		return
+	}
+
+	ws, err := s.getWorkspacePath()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	fullPath := filepath.Join(ws, relPath)
+
+	switch r.Method {
+	case http.MethodGet:
+		content := ""
+		if data, err := os.ReadFile(fullPath); err == nil {
+			content = string(data)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"name": name, "content": content})
+
+	case http.MethodPut:
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB limit
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read body"})
+			return
+		}
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+
+		// Ensure parent directory exists (e.g. memory/ for MEMORY.md)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create directory"})
+			return
+		}
+
+		if err := os.WriteFile(fullPath, []byte(req.Content), 0o644); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write file: " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "name": name})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 

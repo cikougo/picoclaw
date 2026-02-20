@@ -49,6 +49,8 @@ func New(configPath string, port int, adminUser, adminPass string) *Server {
 	mux.HandleFunc("/api/gateway/start", s.requireAuth(s.handleGatewayStart))
 	mux.HandleFunc("/api/gateway/stop", s.requireAuth(s.handleGatewayStop))
 	mux.HandleFunc("/api/gateway/restart", s.requireAuth(s.handleGatewayRestart))
+	mux.HandleFunc("/api/workspace/files", s.requireAuth(s.handleWorkspaceFiles))
+	mux.HandleFunc("/api/workspace/file", s.requireAuth(s.handleWorkspaceFile))
 
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("0.0.0.0:%d", port),
